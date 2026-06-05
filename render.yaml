@@ -13,7 +13,6 @@ services:
   # 3. ERPNext App Web Service (unified container)
   - type: web
     name: erpnext-web
-    repo: https://github.com/Aswinajay/erpnext
     env: docker
     dockerfilePath: Dockerfile
     dockerContext: .
