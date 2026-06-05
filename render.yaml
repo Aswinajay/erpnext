@@ -32,6 +32,7 @@ services:
     env: docker
     dockerfilePath: Dockerfile
     dockerContext: .
+    branch: version-16-hotfix
     plan: free
     disk:
       name: erpnext-site-data
