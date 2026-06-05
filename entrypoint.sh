@@ -7,13 +7,13 @@ SITE_DIR="${SITES_DIR}/${SITE_NAME}"
 
 echo "Starting entrypoint script as root..."
 
-# Ensure frappe user owns the sites directory (vital for mounted disks)
+# Ensure frappe user owns the sites directory
 chown -R frappe:frappe /home/frappe/frappe-bench/sites
 
-# Wait for MariaDB/Redis if environment variables are provided
+# Wait for PostgreSQL if environment variables are provided
 if [ -n "$DB_HOST" ]; then
-    echo "Waiting for MariaDB ($DB_HOST)..."
-    until python3 -c "import socket; s = socket.socket(); s.settimeout(2); s.connect(('$DB_HOST', int('${DB_PORT:-3306}')))" 2>/dev/null; do
+    echo "Waiting for PostgreSQL ($DB_HOST)..."
+    until python3 -c "import socket; s = socket.socket(); s.settimeout(2); s.connect(('$DB_HOST', int('${DB_PORT:-5432}')))" 2>/dev/null; do
         echo "Database offline, retrying..."
         sleep 2
     done
@@ -31,10 +31,6 @@ try:
 except Exception:
     config = {}
 
-# Set database details
-if os.getenv('DB_HOST'): config['db_host'] = os.getenv('DB_HOST')
-if os.getenv('DB_PORT'): config['db_port'] = int(os.getenv('DB_PORT'))
-
 # Set Redis connection strings
 redis_url = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379')
 config['redis_cache'] = f"{redis_url}/0"
@@ -49,28 +45,71 @@ with open(config_path, 'w') as f:
 EOF
 chown frappe:frappe "$SITES_DIR/common_site_config.json"
 
-# Check if site already exists
-if [ ! -f "${SITE_DIR}/site_config.json" ]; then
-    echo "First time setup: site '${SITE_NAME}' does not exist. Creating..."
+# Write site_config.json dynamically
+echo "Writing site_config.json..."
+mkdir -p "${SITE_DIR}"
+python3 - <<EOF
+import json, os
+site_config_path = "$SITE_DIR/site_config.json"
+config = {
+    "db_name": os.getenv("DB_NAME"),
+    "db_user": os.getenv("DB_USER"),
+    "db_password": os.getenv("DB_PASSWORD"),
+    "db_type": "postgres",
+    "db_host": os.getenv("DB_HOST"),
+    "db_port": int(os.getenv("DB_PORT", "5432")),
+    "encryption_key": os.getenv("ENCRYPTION_KEY", "generate_if_needed")
+}
+with open(site_config_path, "w") as f:
+    json.dump(config, f, indent=4)
+EOF
+chown -R frappe:frappe "${SITE_DIR}"
+
+# Check if database has been initialized
+echo "Checking if database is initialized..."
+DATABASE_STATUS=0
+python3 - <<EOF
+import psycopg2, os, sys
+try:
+    conn = psycopg2.connect(
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        port=int(os.getenv("DB_PORT", "5432"))
+    )
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'tabUser';")
+    exists = cur.fetchone()
+    cur.close()
+    conn.close()
+    if exists:
+        print("Database already contains tabUser.")
+        sys.exit(0)
+    else:
+        print("Database is empty.")
+        sys.exit(1)
+except Exception as e:
+    print(f"Error/Empty Database: {e}")
+    sys.exit(1)
+EOF && DATABASE_STATUS=$? || DATABASE_STATUS=$?
+
+if [ "$DATABASE_STATUS" -ne 0 ]; then
+    echo "First time setup: Initializing Postgres database..."
     
-    mkdir -p "${SITE_DIR}"
-    chown -R frappe:frappe "${SITE_DIR}"
+    # Reinstall site to populate the postgres tables
+    su frappe -c "cd /home/frappe/frappe-bench && bench --site ${SITE_NAME} reinstall --yes"
     
-    # Create the new site as the frappe user
-    su frappe -c "cd /home/frappe/frappe-bench && bench new-site ${SITE_NAME} \
-        --db-type mariadb \
-        --db-host ${DB_HOST} \
-        --db-port ${DB_PORT:-3306} \
-        --db-name ${DB_NAME} \
-        --db-user ${DB_USER} \
-        --db-password ${DB_PASSWORD} \
-        --admin-password ${ADMIN_PASSWORD:-admin} \
-        --force"
-        
     echo "Installing erpnext app on site ${SITE_NAME}..."
     su frappe -c "cd /home/frappe/frappe-bench && bench --site ${SITE_NAME} install-app erpnext"
+    
+    # Change the administrator password if provided
+    if [ -n "$ADMIN_PASSWORD" ]; then
+        echo "Setting administrator password..."
+        su frappe -c "cd /home/frappe/frappe-bench && bench --site ${SITE_NAME} set-admin-password ${ADMIN_PASSWORD}"
+    fi
 else
-    echo "Site '${SITE_NAME}' exists. Running migrations..."
+    echo "Database is already initialized. Running migrations..."
     su frappe -c "cd /home/frappe/frappe-bench && bench --site ${SITE_NAME} migrate"
 fi
 

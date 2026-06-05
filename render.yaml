@@ -1,30 +1,14 @@
+databases:
+  # 1. Managed PostgreSQL Database (Free plan, database expires in 90 days)
+  - name: erpnext-db
+    plan: free
+
 services:
-  # 1. Redis Cache & Queue Instance (type: keyvalue)
+  # 2. Redis Cache & Queue Instance (type: keyvalue)
   - type: keyvalue
     name: erpnext-redis
     plan: free
     ipAllowList: [] # block public access, only allow internal traffic
-
-  # 2. MariaDB Database (private docker service with standard image)
-  - type: pserv
-    name: erpnext-db
-    runtime: image
-    image:
-      url: mariadb:10.6
-    plan: starter # Disks are not supported on the free tier. Set to starter for persistence.
-    disk:
-      name: erpnext-db-data
-      mountPath: /var/lib/mysql
-      sizeGB: 10
-    envVars:
-      - key: MYSQL_ROOT_PASSWORD
-        value: erpnext_root_secure_pass
-      - key: MYSQL_DATABASE
-        value: erpnext
-      - key: MYSQL_USER
-        value: erpnext
-      - key: MYSQL_PASSWORD
-        value: erpnext_secure_db_pass # Shared password for internal DB access (not exposed to internet)
 
   # 3. ERPNext App Web Service (unified container)
   - type: web
@@ -33,25 +17,28 @@ services:
     dockerfilePath: Dockerfile
     dockerContext: .
     branch: version-16-hotfix
-    plan: starter # Disks are not supported on the free tier. Set to starter for persistence.
-    disk:
-      name: erpnext-site-data
-      mountPath: /home/frappe/frappe-bench/sites/site1.local
-      sizeGB: 10
+    plan: free # Free tier Web Service (spins down after 15 minutes of inactivity)
     envVars:
       - key: DB_HOST
-        fromService:
-          type: pserv
+        fromDatabase:
           name: erpnext-db
           property: host
       - key: DB_PORT
-        value: 3306
+        fromDatabase:
+          name: erpnext-db
+          property: port
       - key: DB_NAME
-        value: erpnext
+        fromDatabase:
+          name: erpnext-db
+          property: database
       - key: DB_USER
-        value: erpnext
+        fromDatabase:
+          name: erpnext-db
+          property: user
       - key: DB_PASSWORD
-        value: erpnext_secure_db_pass # Matches MYSQL_PASSWORD in erpnext-db
+        fromDatabase:
+          name: erpnext-db
+          property: password
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -60,4 +47,6 @@ services:
       - key: SITE_NAME
         value: site1.local
       - key: ADMIN_PASSWORD
+        value: admin123 # You can change this to any secure password or generate it
+      - key: ENCRYPTION_KEY
         generateValue: true
