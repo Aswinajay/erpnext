@@ -79,7 +79,7 @@ try:
         port=int(os.getenv("DB_PORT", "5432"))
     )
     cur = conn.cursor()
-    cur.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'tabUser';")
+    cur.execute("SELECT 1 FROM information_schema.tables WHERE lower(table_name) = 'tabuser';")
     exists = cur.fetchone()
     cur.close()
     conn.close()
