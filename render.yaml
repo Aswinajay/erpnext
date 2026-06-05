@@ -9,7 +9,8 @@ services:
   - type: pserv
     name: erpnext-db
     runtime: image
-    image: mariadb:10.6
+    image:
+      url: mariadb:10.6
     plan: free
     disk:
       name: erpnext-db-data
