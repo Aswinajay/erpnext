@@ -11,20 +11,20 @@ services:
     runtime: image
     image:
       url: mariadb:10.6
-    plan: free
+    plan: starter # Disks are not supported on the free tier. Set to starter for persistence.
     disk:
       name: erpnext-db-data
       mountPath: /var/lib/mysql
       sizeGB: 10
     envVars:
       - key: MYSQL_ROOT_PASSWORD
-        generateValue: true
+        value: erpnext_root_secure_pass
       - key: MYSQL_DATABASE
         value: erpnext
       - key: MYSQL_USER
         value: erpnext
       - key: MYSQL_PASSWORD
-        generateValue: true
+        value: erpnext_secure_db_pass # Shared password for internal DB access (not exposed to internet)
 
   # 3. ERPNext App Web Service (unified container)
   - type: web
@@ -33,7 +33,7 @@ services:
     dockerfilePath: Dockerfile
     dockerContext: .
     branch: version-16-hotfix
-    plan: free
+    plan: starter # Disks are not supported on the free tier. Set to starter for persistence.
     disk:
       name: erpnext-site-data
       mountPath: /home/frappe/frappe-bench/sites/site1.local
@@ -51,10 +51,7 @@ services:
       - key: DB_USER
         value: erpnext
       - key: DB_PASSWORD
-        fromService:
-          type: pserv
-          name: erpnext-db
-          property: envVar:MYSQL_PASSWORD
+        value: erpnext_secure_db_pass # Matches MYSQL_PASSWORD in erpnext-db
       - key: REDIS_URL
         fromService:
           type: keyvalue
