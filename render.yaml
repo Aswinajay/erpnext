@@ -6,7 +6,7 @@ services:
     ipAllowList: [] # block public access, only allow internal traffic
 
   # 2. MariaDB Database (private docker service with standard image)
-  - type: private
+  - type: pserv
     name: erpnext-db
     runtime: image
     image: mariadb:10.6
@@ -39,7 +39,7 @@ services:
     envVars:
       - key: DB_HOST
         fromService:
-          type: private
+          type: pserv
           name: erpnext-db
           property: host
       - key: DB_PORT
@@ -50,7 +50,7 @@ services:
         value: erpnext
       - key: DB_PASSWORD
         fromService:
-          type: private
+          type: pserv
           name: erpnext-db
           property: envVar:MYSQL_PASSWORD
       - key: REDIS_URL
