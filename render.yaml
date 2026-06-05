@@ -1,0 +1,64 @@
+services:
+  # 1. Redis Cache & Queue Instance (type: keyvalue)
+  - type: keyvalue
+    name: erpnext-redis
+    plan: free
+    ipAllowList: [] # block public access, only allow internal traffic
+
+  # 2. MariaDB Database (private docker service with standard image)
+  - type: private
+    name: erpnext-db
+    runtime: image
+    image: mariadb:10.6
+    plan: free
+    disk:
+      name: erpnext-db-data
+      mountPath: /var/lib/mysql
+      sizeGB: 10
+    envVars:
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true
+      - key: MYSQL_DATABASE
+        value: erpnext
+      - key: MYSQL_USER
+        value: erpnext
+      - key: MYSQL_PASSWORD
+        generateValue: true
+
+  # 3. ERPNext App Web Service (unified container)
+  - type: web
+    name: erpnext-web
+    env: docker
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    plan: free
+    disk:
+      name: erpnext-site-data
+      mountPath: /home/frappe/frappe-bench/sites/site1.local
+      sizeGB: 10
+    envVars:
+      - key: DB_HOST
+        fromService:
+          type: private
+          name: erpnext-db
+          property: host
+      - key: DB_PORT
+        value: 3306
+      - key: DB_NAME
+        value: erpnext
+      - key: DB_USER
+        value: erpnext
+      - key: DB_PASSWORD
+        fromService:
+          type: private
+          name: erpnext-db
+          property: envVar:MYSQL_PASSWORD
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: erpnext-redis
+          property: connectionString
+      - key: SITE_NAME
+        value: site1.local
+      - key: ADMIN_PASSWORD
+        generateValue: true
